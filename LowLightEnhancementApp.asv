@@ -1,0 +1,131 @@
+function LowLightEnhancementApp
+    fig = uifigure('Name', 'Low Light Image Enhancement App', ...
+                   'Position', [100 100 900 600]);
+
+    
+    uilabel(fig, 'Text', 'Low Light Image Enhancement App', ...
+        'FontSize', 20, 'FontWeight', 'bold', ...
+        'Position', [250 550 500 40]);
+
+    
+    btnUpload = uibutton(fig, 'push', ...
+        'Text', 'Upload Image', ...
+        'FontSize', 14, ...
+        'Position', [100 500 150 40], ...
+        'ButtonPushedFcn', @(btn, event) uploadImage(fig));
+
+    
+    uilabel(fig, 'Text', 'Choose Enhancement Filter:', ...
+        'Position', [300 505 200 30], 'FontSize', 12);
+
+    dd = uidropdown(fig, ...
+        'Items', {'Original', 'Histogram Equalization', 'CLAHE', ...
+                  'Gamma Correction', 'Log Transformation', 'Brightness Increase'}, ...
+        'Position', [500 505 200 30], ...
+        'ValueChangedFcn', @(dd, event) applyFilter(fig));
+
+    
+    ax1 = uiaxes(fig, 'Position', [50 200 350 250]);
+    title(ax1, 'Original Image');
+
+    ax2 = uiaxes(fig, 'Position', [500 200 350 250]);
+    title(ax2, 'Enhanced Image');
+
+   
+    fig.UserData = struct('ax1', ax1, 'ax2', ax2, ...
+                          'image', [], 'filter', dd);
+end
+
+
+function uploadImage(fig)
+    [file, path] = uigetfile({'*.jpg;*.jpeg;*.png', 'Image Files'}, 'Select an Image');
+    if isequal(file, 0)
+        return;
+    end
+
+    imgPath = fullfile(path, file);
+    img = imread(imgPath);
+
+    
+    imshow(img, 'Parent', fig.UserData.ax1);
+
+    
+    ud = fig.UserData;
+    ud.image = img;
+    fig.UserData = ud;
+
+    
+    applyFilter(fig);
+end
+
+
+function applyFilter(fig)
+    ud = fig.UserData;
+    img = ud.image;
+    if isempty(img)
+        return;
+    end
+
+    filterType = ud.filter.Value;
+
+    
+    if size(img, 3) == 3
+        gray = rgb2gray(img);
+    else
+        gray = img;
+    end
+
+    switch filterType
+        case 'Original'
+            enhanced = img;
+
+        case 'Histogram Equalization'
+           
+            enhanced = histeq_free(gray);
+
+        case 'CLAHE'
+            
+            enhanced = adapthisteq_free(gray);
+
+        case 'Gamma Correction'
+            gamma = 0.5; 
+            gray_norm = double(gray) / 255;
+            enhanced = uint8(255 * (gray_norm .^ gamma));
+
+        case 'Log Transformation'
+            c = 255 / log(1 + double(max(gray(:))));
+            enhanced = uint8(c * log(1 + double(gray)));
+
+        case 'Brightness Increase'
+            enhanced = uint8(min(double(gray) + 50, 255));
+    end
+
+   
+    imshow(enhanced, 'Parent', ud.ax2);
+end
+
+
+function out = histeq_free(gray)
+    img_vec = double(gray(:));
+    counts = histcounts(img_vec, 0:256);
+    cdf = cumsum(counts) / numel(img_vec);
+    out = uint8(cdf(double(gray)+1) * 255);
+end
+
+
+function out = adapthisteq_free(gray)
+    
+    [rows, cols] = size(gray);
+    tileSize = 64;
+    out = zeros(rows, cols, 'uint8');
+
+    for r = 1:tileSize:rows
+        for c = 1:tileSize:cols
+            r_end = min(r+tileSize-1, rows);
+            c_end = min(c+tileSize-1, cols);
+            tile = gray(r:r_end, c:c_end);
+           
+            out(r:r_end, c:c_end) = histeq_free(tile);
+        end
+    end
+end
